@@ -1,0 +1,35 @@
+---
+title: "3. Nonlinear QSM Validation and Optimal Place-Based Taxation"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{3. Nonlinear QSM Validation and Optimal Place-Based Taxation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6.5, fig.height = 3.8)
+```
+
+For large policy counterfactuals such as optimal visitor or commercial taxes, `urbanwelfare` includes a C++-accelerated nonlinear Quantitative Spatial Model (`solve_qsm()`) and an analytical-adjoint Ramsey tax optimizer (`optimal_spatial_tax()`) calibrated directly to the validated `urban_account` and estimated sector price shares $\widehat{\boldsymbol{\kappa}}^S$.
+
+```{r}
+library(urbanwelfare)
+
+sim <- sim_urban_city(N = 40, T = 8, tourism_share = 0.14, seed = 202)
+acct <- urban_account(sim$E_R0, sim$H_0, sim$origins, sim$destinations)
+exps <- build_exposures(acct, sim$shocks)
+fit  <- estimate_bilateral(sim$bilateral_panel, exps)
+welf <- recover_welfare(fit, acct, se_method = "none")
+
+# Solve both empirical first-order Ramsey taxes and nonlinear QSM adjoint optimum
+tax <- optimal_spatial_tax(
+  welfare = welf,
+  account = acct,
+  demand_elasticities = list(sigma_T = 7.0, eta_out = 2.5),
+  mode = "both"
+)
+summary(tax)
+
+plot(tax, type = "distribution")
+```

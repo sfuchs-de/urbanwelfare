@@ -1,0 +1,76 @@
+---
+title: "1. Quickstart: Intra-City Welfare Incidence in 20 Lines of R"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{1. Quickstart: Intra-City Welfare Incidence in 20 Lines of R}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 3.6)
+```
+
+`urbanwelfare` implements the sufficient-statistics methodology of Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, *"Urban Welfare: Tourism in Barcelona"*). Given an initial bilateral spending matrix, workplace/ownership links, and a localized demand shock, it recovers neighborhood nominal income growth, living-cost changes, and money-metric resident welfare without unit price indices or parametric preferences.
+
+## Five-Step Workflow on Built-In Gravity Data
+
+```{r}
+library(urbanwelfare)
+
+# 0. Load built-in 160-tract synthetic city
+data(sim_city_160)
+
+# 1. Validate two-sector open-city account & build network operators (Gamma_v, Omega^v, M)
+acct <- urban_account(
+  spending_base  = sim_city_160$E_R0,
+  commuting_base = sim_city_160$H_0,
+  origins        = sim_city_160$origins,
+  destinations   = sim_city_160$destinations
+)
+summary(acct)
+
+# 2. Construct direct & network-propagated exposures: F^y = (I - M)^(-1) d, F^v = Gamma_v F^y
+exposures <- build_exposures(
+  account     = acct,
+  shock_panel = sim_city_160$shocks,
+  design      = "direct",
+  center_dest = TRUE
+)
+
+# 3. Step 1: Bilateral spending regression (pair & period FE, two-way clustering)
+fit <- estimate_bilateral(
+  panel     = sim_city_160$bilateral_panel,
+  exposures = exposures,
+  estimator = "ols"
+)
+print(fit)
+
+# 4. Steps 2 & 3: Producer price shares (kappa^S_g), open-city common shift (c_t), & welfare
+welf <- recover_welfare(
+  fit          = fit,
+  account      = acct,
+  price_shares = "estimate_by_group",
+  level_anchor = "open_city_factor_balance",
+  se_method    = "bootstrap",
+  n_boot       = 100,
+  seed         = 42
+)
+summary(welf)
+```
+
+## Comparing Sufficient-Statistics Recovery to Ground Truth
+
+Because `sim_city_160` comes from a known nonlinear spatial equilibrium, we can compare our non-parametric first-order welfare estimates directly against true nonlinear resident welfare in the peak demand period:
+
+```{r}
+truth_lp <- sim_city_160$truth$welfare_peak_lp
+cat(sprintf(
+  "True mean welfare: %.2f lp | Recovered: %.2f lp | Cross-tract r = %.4f\n",
+  weighted.mean(truth_lp, sim_city_160$origins$pop),
+  welf$headline$mean_welfare_lp,
+  cor(welf$tract_summary$welfare_lp, truth_lp)
+))
+
+plot(welf, type = "decomposition")
+```

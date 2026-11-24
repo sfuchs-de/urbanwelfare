@@ -1,0 +1,50 @@
+---
+title: "2. Shift-Share Network Identification and Robustness Extensions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{2. Shift-Share Network Identification and Robustness Extensions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+When destination demand shocks are constructed from shift-share instruments—such as visitor origin countries $\times$ seasonal travel shifters—non-random exposure across commercial hubs propagates through the urban network $(I - M)^{-1}$. Following Borusyak and Hull (2023) and Allen et al. (2026), `build_exposures(design = "shift_share")` propagates expected shifters through the exact same network operator $(I - M)^{-1}$ so `estimate_bilateral()` automatically controls for predictable network exposure.
+
+```{r}
+library(urbanwelfare)
+
+sim <- sim_urban_city(N = 50, T = 8, seed = 101)
+acct <- urban_account(sim$E_R0, sim$H_0, sim$origins, sim$destinations)
+
+# Build shift-share network exposures + Borusyak-Hull propagated expected controls
+exp_ss <- build_exposures(
+  account     = acct,
+  shock_panel = sim$shift_share,
+  design      = "shift_share"
+)
+summary(exp_ss)
+
+# Inspect Rotemberg instrument relevance weights across visitor origin groups
+rot <- rotemberg_weights(exp_ss, acct)
+print(rot)
+cat("Effective shock count (1 / HHI):", round(attr(rot, "effective_shocks_hhi_inv"), 2), "\n")
+```
+
+## Robustness Extensions: CES Shopping Residuals, Workplace Mobility, & Finite Bounds
+
+`urbanwelfare` provides pipe-friendly extensions relaxing fixed shopping amenities, fixed workplaces, and first-order log-linearization while holding the estimated bilateral responses fixed:
+
+```{r}
+fit_ss <- estimate_bilateral(sim$bilateral_panel, exp_ss)
+welf_ext <- recover_welfare(fit_ss, acct, se_method = "none") |>
+  add_shopping_wedge(sigma = c(2.0, 3.456, 8.235)) |>
+  add_workplace_mobility(eps = 3.3) |>
+  add_finite_bounds(sigma_ces = 3.456)
+
+welf_ext$extensions$shopping_wedge$summary
+welf_ext$extensions$workplace_mobility$summary
+welf_ext$extensions$finite_bounds$summary
+```

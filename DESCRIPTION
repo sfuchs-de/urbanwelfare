@@ -1,0 +1,49 @@
+Package: urbanwelfare
+Type: Package
+Title: Sufficient-Statistics Welfare Incidence and Optimal Policy in Urban Networks
+Version: 0.1.0
+Authors@R: c(
+    person("Treb", "Allen", role = "aut", email = "treb.allen@dartmouth.edu"),
+    person("Simon", "Fuchs", role = c("aut", "cre"), email = "simon.fuchs@atl.frb.org"),
+    person("Sharat", "Ganapati", role = "aut", email = "sg1390@georgetown.edu"),
+    person("Alberto", "Graziano", role = "aut"),
+    person("Rocio", "Madera", role = "aut", email = "romadera@smu.edu"),
+    person("Judit", "Montoriol-Garriga", role = "aut")
+  )
+Description: Implements the sufficient-statistics methodology of Allen, Fuchs,
+    Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, "Urban Welfare:
+    Tourism in Barcelona") for measuring the spatial welfare incidence of
+    localized demand shocks within cities from bilateral spending, income, and
+    commuting records without unit price indices or parametric functional forms.
+    Provides validated open-city spatial accounting ('urban_account'), network
+    exposure construction and Borusyak-Hull shift-share controls
+    ('build_exposures'), high-dimensional bilateral panel estimation wrapping
+    'fixest' ('estimate_bilateral'), producer price-share matching and open-city
+    common-level anchoring ('recover_welfare'), robustness extensions for CES
+    shopping residuals, Frechet workplace mobility, and finite-change linear
+    programming bounds, plus an optional C++-accelerated nonlinear quantitative
+    spatial model (QSM) and adjoint Ramsey spatial tax solver
+    ('optimal_spatial_tax') and synthetic city simulator ('sim_urban_city').
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 4.1.0)
+Imports:
+    Rcpp (>= 1.0.8),
+    Matrix (>= 1.5-0),
+    fixest (>= 0.11.0),
+    ggplot2 (>= 3.4.0),
+    stats,
+    utils
+LinkingTo:
+    Rcpp
+Suggests:
+    knitr,
+    rmarkdown,
+    sf,
+    data.table
+VignetteBuilder: knitr
+URL: https://github.com/sfuchs-de/urbanwelfare
+BugReports: https://github.com/sfuchs-de/urbanwelfare/issues
+Config/roxygen2/version: 8.1.1
