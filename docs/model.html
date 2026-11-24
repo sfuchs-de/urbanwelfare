@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sufficient-Statistics Model &middot; urbanwelfare</title>
+  <meta name="description" content="Documentation for urbanwelfare: Sufficient-Statistics Welfare Incidence and Optimal Policy in Urban Networks."/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", () => { if (window.hljs) hljs.highlightAll(); });</script>
+  <script defer src="assets/site.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="index.html">
+        <span class="brand-title">urbanwelfare</span>
+        <span class="version-badge">v0.1.0</span>
+      </a>
+      <input id="sidebar-search" class="search-box" type="search" placeholder="Filter pages..."/>
+      <div class="nav-group-label">Getting Started</div><ul class="nav-list"><li><a href="index.html">Home & Quickstart</a></li><li><a href="own-data.html">Use Your Own Data</a></li></ul><div class="nav-group-label">Methodology</div><ul class="nav-list"><li><a href="model.html" class="active">Sufficient-Statistics Model</a></li><li><a href="extensions.html">Extensions, QSM & Taxes</a></li><li><a href="barcelona.html">Barcelona Replication</a></li></ul><div class="nav-group-label">Reference</div><ul class="nav-list"><li><a href="api.html">API Reference</a></li></ul>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="breadcrumb">urbanwelfare &rsaquo; <strong>Sufficient-Statistics Model</strong></div>
+        <div class="topbar-actions">
+          <select id="theme-picker" class="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="catppuccin">Catppuccin</option>
+          </select>
+          <a class="gh-link" href="https://github.com/sfuchs-de/urbanwelfare" target="_blank" rel="noopener">GitHub &nearr;</a>
+        </div>
+      </header>
+      <main class="content">
+        
+<h1>Sufficient-Statistics Framework</h1>
+<p>
+  <code>urbanwelfare</code> implements the five-step sufficient-statistics framework of Allen, Fuchs,
+  Ganapati, Graziano, Madera, and Montoriol-Garriga (2026) in a two-sector small open city.
+</p>
+
+<h2>1. Household &amp; Producer Envelopes (Propositions 2.1–2.2)</h2>
+<p>
+  Around an initial interior optimum with fixed outside-good price ($p_0 = 1$) and fixed short-run housing
+  rents, Shephard&rsquo;s lemma and workplace earnings optimization yield first-order money-metric resident
+  welfare in origin $n$:
+</p>
+$$\frac{\mathrm{d}EV_{nt}}{v_n^0} = \mathrm{d}\log v_{nt} - \sum_{i=1}^N s_{ni}\,\mathrm{d}\log p_{it}, \qquad s_{ni} = \frac{E_{ni}^{R,0}}{v_n^0}.$$
+<p>
+  Because transaction datasets record nominal sales $y_{it} = p_{it} q_{it}$ rather than unit prices $p_{it}$,
+  competitive firms combining fixed local factors with flexible traded inputs at fixed external prices satisfy
+  the producer envelope $\mathrm{d}G_{it} = y_i^0\,\mathrm{d}\log p_{it}$. Defining the marginal price
+  share $\kappa_i^S \equiv \mathrm{d}G_i / \mathrm{d}y_i = (1 + \varepsilon_i^S)^{-1} \in (0,1]$ gives:
+</p>
+$$\mathrm{d}\log p_{it} = \kappa_i^S\,\mathrm{d}\log y_{it}, \qquad \mathrm{d}\log v_{nt}^{\mathrm{prod}} = \sum_{i=1}^N H_{ni}^m \frac{y_i^0}{v_n^0}\kappa_i^S\,\mathrm{d}\log y_{it}.$$
+
+<h2>2. Spatial Network Propagation (Proposition 2.3a)</h2>
+<p>
+  Let $\Gamma_{v,ni} = H_{ni}^m G_i^0 / v_n^0$ map destination factor income to residential origins, and
+  $\Omega^v_{in} = E_{ni}^{R,0} / y_i^0$ map origin income back to commercial destinations. One earning-and-shopping
+  round is $M = \Omega^v \Gamma_v$. Because spending leaks into flexible traded inputs, housing/saving,
+  outside traded goods, and external factor owners, $\rho(M) &lt; 1$ and the infinite-round exposures are:
+</p>
+$$\mathbf{F}_t^y = (I - M)^{-1}\mathbf{d}_t = \sum_{h=0}^{\infty} M^h \mathbf{d}_t, \qquad \mathbf{F}_t^v = \Gamma_v \mathbf{F}_t^y, \qquad d_{it} = \frac{E_i^{\mathrm{ext},0}}{y_i^0} h_{it}.$$
+
+<h2>3. Bilateral Spending Regression (Proposition 2.4)</h2>
+<p>
+  Under local homotheticity and spatial IIA relative to the outside good $i = 0$, basket-centering destination
+  exposures $\widetilde{x}_{nit} = x_{it} - \sum_{j=1}^N s_{nj}^{NH} x_{jt}$ ($\sum_{j=0}^N s_{nj}^{NH}\widetilde{x}_{njt} = 0$)
+  separates relative origin income growth from destination expenditure switching in a single HDFE regression
+  with pair ($\alpha_{ni}$) and period ($\delta_t$) fixed effects:
+</p>
+$$\log E^R_{nit} = \alpha_{ni} + \delta_t + \underbrace{a_O h_{nt} + b_v F^v_{nt}}_{\text{origin income}} + \underbrace{a_D \widetilde{h}_{nit} + b_D \widetilde{F}^y_{nit}}_{\text{expenditure switching}} + \varepsilon_{nit}.$$
+<p>
+  Differentiating goods-market clearing then recovers destination sales growth
+  $\mathrm{d}\log \widehat{y}_{it} = d_{it} + \sum_n \Omega^v_{in}\,\mathrm{d}\log \widehat{E}^R_{nit}$,
+  and matching $\mathrm{d}\log \widehat{v}_{nt}$ against $\sum_{i \in g} H_{ni}^m(y_i^0/v_n^0)\,\mathrm{d}\log \widehat{y}_{it}$
+  identifies sector marginal price shares $\widehat{\kappa}_g^S$.
+</p>
+
+<h2>4. Open-City Level Anchor &amp; Terms of Trade (Proposition 2.5)</h2>
+<p>
+  Time fixed effects $\delta_t$ absorb the city-wide income shift $c_t$. In a small open city with fixed
+  outside-sector factor earnings ($\mathrm{d}G^O = 0$), aggregate resident income growth must equal local
+  factor payments accruing to residents:
+</p>
+$$\sum_{n \in \mathcal{R}} v_n^0 (\mathrm{d}\log \widehat{v}_{nt} + c_t) = \sum_{n \in \mathcal{R}}\sum_{i=1}^N H_{ni}^m y_i^0 \kappa_i^S (\mathrm{d}\log \widehat{y}_{it} + \Omega_i^v c_t) \implies \widehat{c}_t = -\frac{\psi_t}{1 - \vartheta}.$$
+<p>
+  Summing anchored $\mathrm{d}EV_{nt}$ over all city residents cancels internal resident-to-resident sales
+  and yields the open-city aggregate terms-of-trade identity verified automatically by <code>recover_welfare()</code>:
+</p>
+$$\sum_{n \in \mathcal{R}} \mathrm{d}EV_{nt} = \sum_{i=1}^N E_i^{\mathrm{nonres},0}\,\mathrm{d}\log p_{it} - \sum_{i=1}^N (1 - H_i^{\mathcal{R}}) y_i^0\,\mathrm{d}\log p_{it}.$$
+
+        <nav class="pager">
+          <a href="own-data.html">&laquo; Use Your Own Data</a>
+          <a href="extensions.html">Extensions, QSM & Taxes &raquo;</a>
+        </nav>
+        <div class="footer-note">
+          <code>urbanwelfare</code> v0.1.0 &middot; Based on Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, <em>&ldquo;Urban Welfare: Tourism in Barcelona&rdquo;</em>). MIT License.
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

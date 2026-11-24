@@ -3,5 +3,6 @@
 ^data-raw$
 ^LICENSE\.md$
 ^README\.Rmd$
+^docs$
 ^\.github$
 ^\.DS_Store$

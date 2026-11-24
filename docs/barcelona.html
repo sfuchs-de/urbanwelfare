@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Barcelona Replication &middot; urbanwelfare</title>
+  <meta name="description" content="Documentation for urbanwelfare: Sufficient-Statistics Welfare Incidence and Optimal Policy in Urban Networks."/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", () => { if (window.hljs) hljs.highlightAll(); });</script>
+  <script defer src="assets/site.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="index.html">
+        <span class="brand-title">urbanwelfare</span>
+        <span class="version-badge">v0.1.0</span>
+      </a>
+      <input id="sidebar-search" class="search-box" type="search" placeholder="Filter pages..."/>
+      <div class="nav-group-label">Getting Started</div><ul class="nav-list"><li><a href="index.html">Home & Quickstart</a></li><li><a href="own-data.html">Use Your Own Data</a></li></ul><div class="nav-group-label">Methodology</div><ul class="nav-list"><li><a href="model.html">Sufficient-Statistics Model</a></li><li><a href="extensions.html">Extensions, QSM & Taxes</a></li><li><a href="barcelona.html" class="active">Barcelona Replication</a></li></ul><div class="nav-group-label">Reference</div><ul class="nav-list"><li><a href="api.html">API Reference</a></li></ul>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="breadcrumb">urbanwelfare &rsaquo; <strong>Barcelona Replication</strong></div>
+        <div class="topbar-actions">
+          <select id="theme-picker" class="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="catppuccin">Catppuccin</option>
+          </select>
+          <a class="gh-link" href="https://github.com/sfuchs-de/urbanwelfare" target="_blank" rel="noopener">GitHub &nearr;</a>
+        </div>
+      </header>
+      <main class="content">
+        
+<h1>Barcelona Replication Guide</h1>
+<p>
+  <code>urbanwelfare</code> applies directly to the empirical setting of Allen, Fuchs, Ganapati, Graziano,
+  Madera, and Montoriol-Garriga (2026, <em>&ldquo;Urban Welfare: Tourism in Barcelona&rdquo;</em>), which
+  models <strong>1,053 Barcelona census tracts</strong> ($\mathcal{R}$, <code>is_city_resident = TRUE</code>)
+  together with <strong>35 surrounding metropolitan municipalities</strong> ($\mathcal{M}$,
+  <code>is_city_resident = FALSE</code>) across 24 months and 5 commercial activity groups.
+</p>
+
+<h2>Workflow on Prepared Barcelona Accounts</h2>
+<pre><code class="language-r">library(urbanwelfare)
+
+# 1. Build 1,088-origin (1,053 BCN + 35 Metro) x 1,053-destination open-city account
+acct &lt;- urban_account(
+  spending_base      = E_R0_all,      # 1088 x 1053 initial resident + metro card spending
+  commuting_base     = H_0_all,       # 1088 x 1053 workplace &amp; business-claim shares
+  origins            = origins_bcn,   # is_city_resident = TRUE for 1,053 BCN tracts
+  destinations       = dests_bcn,     # 5 IO consumer-cut activity groups
+  balance_method     = "strict",
+  commuting_is_share = TRUE
+)
+summary(acct)
+
+# 2. Construct network exposures &amp; import enclave Step-1 bilateral estimates (N = 3,260,707)
+exps &lt;- build_exposures(acct, shocks_bcn, design = "direct")
+fit  &lt;- bilateral_from_estimates(beta_4, exps, vcov = vcov_4x4, n_obs = 3260707L)
+
+# 3. Recover 5-sector price shares on 2018 bank-income support &amp; July vs. January welfare
+welf &lt;- recover_welfare(
+  fit           = fit,
+  account       = acct,
+  period        = "201807",
+  kappa_support = matching_support_2018,
+  se_method     = "bootstrap",
+  n_boot        = 1000,
+  seed          = 20261004
+)
+summary(welf)</code></pre>
+
+<h2>Verified Six-Decimal Parity</h2>
+<p>
+  Running the snippet above reproduces every diagnostic, sector marginal price share, and headline welfare
+  statistic in the manuscript to six decimal places:
+</p>
+<table>
+  <thead>
+    <tr><th>Quantity</th><th><code>urbanwelfare</code> Output</th><th>Manuscript Value</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Spectral radius $\rho(M)$ &amp; multiplier $(1-\rho)^{-1}$</td><td><code>0.244636</code> &middot; <code>1.324</code></td><td><code>0.245</code> &middot; <code>1.32</code></td></tr>
+    <tr><td>Leakage: flexible inputs / housing / outside goods / ext. factors</td><td><code>56.24% / 32.09% / 8.81% / 4.30%</code></td><td><code>56.2% / 32.1% / 8.8% / 4.3%</code></td></tr>
+    <tr><td>Sector $\widehat{\kappa}_g^S$ (Accomm./Rest., Other Serv., Prop., Trade, Transp.)</td><td><code>0.6245, 0.6334, 0.5950, 0.4340, 0.8108</code></td><td><code>0.625, 0.633, 0.595, 0.434, 0.811</code></td></tr>
+    <tr><td>July–January Mean Nominal Income Growth</td><td><code>4.744697</code> log pts</td><td><code>4.744697</code> (<code>4.74</code>)</td></tr>
+    <tr><td>July–January Mean Living-Cost Increase</td><td><code>3.019153</code> log pts</td><td><code>3.019153</code> (<code>3.02</code>)</td></tr>
+    <tr><td>July–January Mean Resident Welfare ($\mathrm{d}EV / v^0$)</td><td><code>1.725544</code> log pts</td><td><code>1.725544</code> (<code>1.73</code>)</td></tr>
+    <tr><td>Tract Welfare P10 / Median / P90</td><td><code>0.709238 / 1.454095 / 3.324039</code></td><td><code>0.71 / 1.45 / 3.32</code></td></tr>
+    <tr><td>Sensitivity: MPC $\mu = 0.80$ &middot; Upstream $\psi_O = 0.15$</td><td><code>1.800987</code> &middot; <code>2.357359</code></td><td><code>1.800987</code> &middot; <code>2.357359</code></td></tr>
+    <tr><td>Aggregate Terms-of-Trade Identity Discrepancy</td><td><code>1.16e-16</code></td><td><code>&lt; 1e-15</code></td></tr>
+  </tbody>
+</table>
+
+        <nav class="pager">
+          <a href="extensions.html">&laquo; Extensions, QSM & Taxes</a>
+          <a href="api.html">API Reference &raquo;</a>
+        </nav>
+        <div class="footer-note">
+          <code>urbanwelfare</code> v0.1.0 &middot; Based on Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, <em>&ldquo;Urban Welfare: Tourism in Barcelona&rdquo;</em>). MIT License.
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

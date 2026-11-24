@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home & Quickstart &middot; urbanwelfare</title>
+  <meta name="description" content="Documentation for urbanwelfare: Sufficient-Statistics Welfare Incidence and Optimal Policy in Urban Networks."/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", () => { if (window.hljs) hljs.highlightAll(); });</script>
+  <script defer src="assets/site.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="index.html">
+        <span class="brand-title">urbanwelfare</span>
+        <span class="version-badge">v0.1.0</span>
+      </a>
+      <input id="sidebar-search" class="search-box" type="search" placeholder="Filter pages..."/>
+      <div class="nav-group-label">Getting Started</div><ul class="nav-list"><li><a href="index.html" class="active">Home & Quickstart</a></li><li><a href="own-data.html">Use Your Own Data</a></li></ul><div class="nav-group-label">Methodology</div><ul class="nav-list"><li><a href="model.html">Sufficient-Statistics Model</a></li><li><a href="extensions.html">Extensions, QSM & Taxes</a></li><li><a href="barcelona.html">Barcelona Replication</a></li></ul><div class="nav-group-label">Reference</div><ul class="nav-list"><li><a href="api.html">API Reference</a></li></ul>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="breadcrumb">urbanwelfare &rsaquo; <strong>Home & Quickstart</strong></div>
+        <div class="topbar-actions">
+          <select id="theme-picker" class="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="catppuccin">Catppuccin</option>
+          </select>
+          <a class="gh-link" href="https://github.com/sfuchs-de/urbanwelfare" target="_blank" rel="noopener">GitHub &nearr;</a>
+        </div>
+      </header>
+      <main class="content">
+        
+<h1 id="urbanwelfare">urbanwelfare</h1>
+<p>
+  <code>urbanwelfare</code> is a standalone R and C++ (<code>Rcpp</code>) package for evaluating the
+  spatial welfare incidence of localized demand shocks and place-based policies within cities.
+  Given a bilateral resident spending (or trip) panel, workplace commuting/ownership links, and a
+  destination demand shock, it recovers neighborhood nominal income growth, living-cost changes,
+  and first-order money-metric resident welfare <strong>without unit price indices or parametric
+  functional forms</strong>—and optionally solves a calibrated nonlinear Quantitative Spatial Model (QSM)
+  and optimal place-specific Ramsey taxes.
+</p>
+
+<div class="callout">
+  <div class="callout-title">Core Design Promise</div>
+  Start from three tidy tables—bilateral spending, commuting flows, and destination shocks—or from a
+  validated spatial account. No source edits are required, and every run verifies spectral convergence
+  $\rho(M) &lt; 1$ and the open-city aggregate terms-of-trade identity to machine precision.
+</div>
+
+<h2>Install and run the built-in synthetic city</h2>
+<pre><code class="language-r"># Install from GitHub (requires R &gt;= 4.1, fixest, Matrix, Rcpp, ggplot2)
+# remotes::install_github("sfuchs-de/urbanwelfare")
+
+library(urbanwelfare)
+data(sim_city_160)
+
+# One-call pipeline directly from tidy tables:
+pipe &lt;- run_urban_welfare(
+  bilateral_panel = sim_city_160$bilateral_panel,
+  commuting       = sim_city_160$H_0,
+  external_demand = data.frame(
+    dest = sim_city_160$shocks$dest,
+    time = sim_city_160$shocks$time,
+    external_spending = sim_city_160$shocks$E_ext
+  ),
+  origins      = sim_city_160$origins,
+  destinations = sim_city_160$destinations
+)
+summary(pipe$welfare)</code></pre>
+
+<p>
+  <code>sim_city_160</code> ships inside the package (160 neighborhoods, 4 commercial sectors, 6 external
+  visitor groups, and known nonlinear ground-truth welfare), so the example runs in under two seconds with
+  zero external data files.
+</p>
+
+<h2>Step-by-step modular workflow</h2>
+<p>
+  For custom shift-share instruments, enclave regressions, robustness bounds, or optimal spatial taxation,
+  call the five modular stages directly:
+</p>
+<pre><code class="language-r"># 1. Validate two-sector open-city account &amp; build network operators (Gamma_v, Omega^v, M)
+acct &lt;- urban_account(
+  spending_base  = sim_city_160$E_R0,
+  commuting_base = sim_city_160$H_0,
+  origins        = sim_city_160$origins,
+  destinations   = sim_city_160$destinations,
+  balance_method = "reconcile"   # "reconcile", "ipf", or "strict"
+)
+
+# 2. Propagate shocks through (I - M)^(-1) and enable C++ basket centering
+exposures &lt;- build_exposures(acct, sim_city_160$shocks, design = "direct")
+
+# 3. Step 1: Bilateral spending regression (fixest OLS, PPML, or 2SLS IV)
+fit &lt;- estimate_bilateral(sim_city_160$bilateral_panel, exposures, estimator = "ols")
+
+# 4. Steps 2 &amp; 3: Sector price shares (kappa^S_g), common shift (c_t), &amp; resident EV
+welf &lt;- recover_welfare(fit, acct, level_anchor = "open_city_factor_balance", se_method = "bootstrap")
+
+# 5. Extensions &amp; C++ adjoint optimal spatial tax
+welf &lt;- welf |&gt;
+  add_shopping_wedge(sigma = c(2.0, 3.456, 8.235)) |&gt;
+  add_workplace_mobility(eps = 3.3) |&gt;
+  add_finite_bounds(sigma_ces = 3.456)
+
+tax &lt;- optimal_spatial_tax(welf, acct, demand_elasticities = list(sigma_T = 7.0, eta_out = 2.5))</code></pre>
+
+<div class="figure-grid">
+  <div class="figure-card">
+    <img src="assets/fig-decomposition.png" alt="Income, living costs, and net resident welfare"/>
+    <div class="figure-caption"><code>plot(welf, type = "decomposition")</code>: Nominal income gains, local living-cost increases, and net resident welfare across 160 neighborhoods.</div>
+  </div>
+  <div class="figure-card">
+    <img src="assets/fig-parity.png" alt="Sufficient statistics vs nonlinear QSM ground truth"/>
+    <div class="figure-caption"><code>plot(welf, type = "qsm_parity", benchmark = ...)</code>: Non-parametric sufficient-statistics recovery vs. exact nonlinear equilibrium truth.</div>
+  </div>
+</div>
+
+<h2>Output contract &amp; repository boundaries</h2>
+<p>
+  Every <code>urban_welfare</code> and <code>urban_pipeline</code> object returns tract-level and decile
+  tables (<code>as.data.frame(welf)</code>, <code>welf$deciles</code>), spectral and openness diagnostics
+  (<code>acct$rho_M</code>, <code>acct$leakage</code>), the open-city recycling share $\vartheta$, and the
+  exact aggregate terms-of-trade check residual (<code>welf$headline$terms_of_trade_gap</code>).
+</p>
+<p>
+  See <a href="own-data.html">Use Your Own Data</a> to map payment cards, scanner data, or mobility panels
+  into <code>urbanwelfare</code>, and <a href="barcelona.html">Barcelona Replication</a> for exact six-decimal
+  reproduction of the Barcelona tourism study while keeping restricted microdata outside Git.
+</p>
+
+        <nav class="pager">
+          <span></span>
+          <a href="own-data.html">Use Your Own Data &raquo;</a>
+        </nav>
+        <div class="footer-note">
+          <code>urbanwelfare</code> v0.1.0 &middot; Based on Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, <em>&ldquo;Urban Welfare: Tourism in Barcelona&rdquo;</em>). MIT License.
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

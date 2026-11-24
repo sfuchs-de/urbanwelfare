@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>API Reference &middot; urbanwelfare</title>
+  <meta name="description" content="Documentation for urbanwelfare: Sufficient-Statistics Welfare Incidence and Optimal Policy in Urban Networks."/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", () => { if (window.hljs) hljs.highlightAll(); });</script>
+  <script defer src="assets/site.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="index.html">
+        <span class="brand-title">urbanwelfare</span>
+        <span class="version-badge">v0.1.0</span>
+      </a>
+      <input id="sidebar-search" class="search-box" type="search" placeholder="Filter pages..."/>
+      <div class="nav-group-label">Getting Started</div><ul class="nav-list"><li><a href="index.html">Home & Quickstart</a></li><li><a href="own-data.html">Use Your Own Data</a></li></ul><div class="nav-group-label">Methodology</div><ul class="nav-list"><li><a href="model.html">Sufficient-Statistics Model</a></li><li><a href="extensions.html">Extensions, QSM & Taxes</a></li><li><a href="barcelona.html">Barcelona Replication</a></li></ul><div class="nav-group-label">Reference</div><ul class="nav-list"><li><a href="api.html" class="active">API Reference</a></li></ul>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="breadcrumb">urbanwelfare &rsaquo; <strong>API Reference</strong></div>
+        <div class="topbar-actions">
+          <select id="theme-picker" class="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="catppuccin">Catppuccin</option>
+          </select>
+          <a class="gh-link" href="https://github.com/sfuchs-de/urbanwelfare" target="_blank" rel="noopener">GitHub &nearr;</a>
+        </div>
+      </header>
+      <main class="content">
+        
+<h1>API Reference</h1>
+
+<div class="api-block">
+  <div class="api-sig">run_urban_welfare(bilateral_panel, commuting, external_demand, origins = NULL, destinations = NULL, base_time = NULL, estimator = "ols", price_shares = "estimate_by_group", period = NULL, se_method = "delta", ...)</div>
+  <p>One-call end-to-end pipeline from tidy panel tables. Returns an <code>urban_pipeline</code> list containing <code>$account</code>, <code>$exposures</code>, <code>$fit</code>, <code>$welfare</code>, and <code>$manifest</code>.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">urban_from_tables(bilateral_panel, commuting, external_demand, base_time = NULL, origins = NULL, destinations = NULL, ...)</div>
+  <p>Extracts base-period bilateral spending and external demand from tidy data frames, calibrates omitted budget/sales totals, and returns <code>list(account, shocks, base_time)</code>.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">urban_account(spending_base, commuting_base, origins, destinations, balance_method = c("reconcile", "ipf", "strict"), commuting_is_share = "auto", tol = 1e-7)</div>
+  <p>Validates two-sector open-city accounting identities, computes leakage shares, constructs $\Gamma_v$, $\Omega^v$, $M = \Omega^v\Gamma_v$, and $(I - M)^{-1}$, and checks $\rho(M) &lt; 1$.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">build_exposures(account, shock_panel, design = c("direct", "shift_share"), center_dest = TRUE, horizons = c(0, 1, 2, Inf))</div>
+  <p>Computes direct shocks $d_{it}$, infinite-horizon exposures $(\mathbf{F}_t^y, \mathbf{F}_t^v)$, finite-round approximations, and Borusyak–Hull propagated shift-share controls.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">estimate_bilateral(panel, exposures, estimator = c("ols", "ppml", "iv"), cluster = c("origin^time", "dest^time"), include_direct = TRUE, use_expected_controls = TRUE, extra_controls = character(0), weights = NULL)</div>
+  <p>C++ basket-centers destination exposures and estimates Proposition 2.4&rsquo;s bilateral regression via <code>fixest</code>. Pair with <code>bilateral_from_estimates()</code> for enclave imports, <code>rotemberg_weights()</code> for shift-share diagnostics, and <code>loo_influence()</code> for jackknife checks.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">recover_welfare(fit, account, price_shares = "estimate_by_group", level_anchor = c("open_city_factor_balance", "zero"), period = NULL, base_period = NULL, kappa_periods = NULL, kappa_support = NULL, mpc_nonhousing = NULL, psi_O = 0.0, se_method = c("bootstrap", "delta", "none"), n_boot = 300L, seed = 42L)</div>
+  <p>Recovers relative income and sales responses, estimates sector $\widehat{\kappa}_g^S$, pins down $\widehat{c}_t$ via open-city factor balance (Proposition 2.5), verifies the aggregate terms-of-trade identity, and returns tract and decile welfare incidence.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">add_shopping_wedge(welfare, sigma = c(2.0, 3.456, 8.235)) &middot; add_workplace_mobility(welfare, eps = 3.3) &middot; add_finite_bounds(welfare, sigma_ces = 3.456)</div>
+  <p>Pipe-friendly robustness extensions relaxing fixed shopping amenities, fixed workplaces, and log-linearization.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">solve_qsm(account, kappa = NULL, ET_shock = NULL, tau = NULL, sigma_R = 3.456, sigma_T = 7.0, eta_out = 2.5) &middot; optimal_spatial_tax(welfare, account, demand_elasticities = list(sigma_T = 7.0, eta_out = 2.5), sigma_R = 3.456, mode = c("both", "empirical", "nonlinear_qsm"))</div>
+  <p>C++ damped-Newton nonlinear QSM solver and analytical-adjoint L-BFGS-B optimal uniform and place-specific visitor tax solver with 4-channel Ramsey decomposition.</p>
+</div>
+
+<div class="api-block">
+  <div class="api-sig">sim_urban_city(N = 80L, T = 12L, K = 4L, n_visitor_groups = 6L, model = c("ces", "hsa", "iia_het", "kappa_het"), ...)</div>
+  <p>Generates synthetic multi-sector gravity cities with known nonlinear equilibrium truth. Built-in 160-tract dataset accessible via <code>data(sim_city_160)</code>.</p>
+</div>
+
+        <nav class="pager">
+          <a href="barcelona.html">&laquo; Barcelona Replication</a>
+          <span></span>
+        </nav>
+        <div class="footer-note">
+          <code>urbanwelfare</code> v0.1.0 &middot; Based on Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, <em>&ldquo;Urban Welfare: Tourism in Barcelona&rdquo;</em>). MIT License.
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

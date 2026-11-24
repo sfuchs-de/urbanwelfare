@@ -11,7 +11,9 @@ estimate_bilateral(
   estimator = c("ols", "ppml", "iv"),
   cluster = c("origin^time", "dest^time"),
   include_direct = TRUE,
-  use_expected_controls = TRUE
+  use_expected_controls = TRUE,
+  extra_controls = character(0),
+  weights = NULL
 )
 }
 \arguments{
@@ -32,6 +34,12 @@ alongside the network exposures \eqn{(F^v_{nt}, \widetilde{F}^y_{nit})}.}
 
 \item{use_expected_controls}{Logical (default \code{TRUE}): include
 Borusyak-Hull expected exposures when present in \code{exposures}.}
+
+\item{extra_controls}{Optional character vector of additional covariate column
+names already present in \code{panel} to include on the right-hand side.}
+
+\item{weights}{Optional character string naming a non-negative observation
+weight column in \code{panel}.}
 }
 \value{
 An S3 object of class \code{"urban_bilateral"} containing the

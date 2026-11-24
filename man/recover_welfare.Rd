@@ -11,14 +11,19 @@ recover_welfare(
   price_shares = "estimate_by_group",
   level_anchor = c("open_city_factor_balance", "zero"),
   period = NULL,
+  base_period = NULL,
   kappa_periods = NULL,
+  kappa_support = NULL,
+  mpc_nonhousing = NULL,
+  psi_O = 0,
   se_method = c("bootstrap", "delta", "none"),
   n_boot = 300L,
   seed = 42L
 )
 }
 \arguments{
-\item{fit}{An \code{\link{urban_bilateral}} object from \code{\link{estimate_bilateral}}.}
+\item{fit}{An \code{\link{urban_bilateral}} object from
+\code{\link{estimate_bilateral}} or \code{\link{bilateral_from_estimates}}.}
 
 \item{account}{An \code{\link{urban_account}} object.}
 
@@ -32,12 +37,27 @@ named by \code{sector_group}) supplying \eqn{\kappa_i^S \in (0, 1]} directly.}
 Proposition 2.5's \eqn{\widehat{c}_t = -\psi_t / (1 - \vartheta)}) or
 \code{"zero"} (cross-sectional differences at \eqn{c_t = 0}).}
 
-\item{period}{Integer or character selecting the focal reporting period for
-cross-sectional summaries and plots (defaults to the period with largest
-mean external shock \eqn{\bar{d}_t}).}
+\item{period}{Integer or character selecting the focal reporting period
+(defaults to the period with largest mean external shock \eqn{\bar{d}_t}).}
+
+\item{base_period}{Optional integer or character selecting a reference period
+to difference against (when \code{NULL}, responses are reported as stored,
+e.g. relative to the already-normalized base month).}
 
 \item{kappa_periods}{Optional integer vector of column indices of periods used
-when estimating \eqn{\kappa_g^S} (defaults to all periods).}
+when estimating \eqn{\kappa_g^S} on a balanced panel (defaults to all periods).}
+
+\item{kappa_support}{Optional data frame with columns \code{origin} (or \code{id})
+and \code{time} (or \code{t}), plus optional \code{weight} (or
+\code{estimation_weight}) and additional control columns, specifying an
+exact unbalanced WLS/FE support for Step-2 \eqn{\kappa_g^S} estimation.}
+
+\item{mpc_nonhousing}{Optional scalar or length-\code{N_orig} vector giving
+the marginal propensity to spend on non-housing goods \eqn{\mu_n = \mathrm{d}x_n / \mathrm{d}v_n}
+(defaults to \code{account$origins$nu}, i.e. \eqn{\mu_n = \nu_n}).}
+
+\item{psi_O}{Numeric scalar in \eqn{[0, 1)} for upstream outside-sector factor
+retention per euro of flexible input expansion (default \code{0.0}).}
 
 \item{se_method}{Character: \code{"bootstrap"} (default, parametric redraws of
 \eqn{\widehat{\boldsymbol{\beta}}} and \eqn{\widehat{\boldsymbol{\kappa}}^S}),
@@ -54,16 +74,9 @@ An S3 object of class \code{"urban_welfare"}.
 Translates estimated bilateral spending slopes into neighborhood nominal
 income growth, destination sales and producer price responses, the open-city
 common income level \eqn{\widehat{c}_t} (Proposition 2.5), and first-order
-money-metric resident welfare \eqn{\mathrm{d}EV_{nt} / v_n^0}. Also verifies
-the open-city aggregate terms-of-trade identity and computes two-step
-bootstrap or delta-method confidence intervals.
-}
-\examples{
-data(sim_city_160)
-acct <- urban_account(sim_city_160$E_R0, sim_city_160$H_0,
-                      sim_city_160$origins, sim_city_160$destinations)
-exps <- build_exposures(acct, sim_city_160$shocks)
-fit  <- estimate_bilateral(sim_city_160$bilateral_panel, exps)
-welf <- recover_welfare(fit, acct, seed = 1)
-summary(welf)
+money-metric resident welfare \eqn{\mathrm{d}EV_{nt} / v_n^0}. Supports
+unbalanced weighted Step-2 matching samples (\code{kappa_support}),
+non-homothetic marginal propensities to spend (\code{mpc_nonhousing}),
+upstream outside-sector retention (\code{psi_O}), and two-period contrasts
+(\code{period} vs. \code{base_period}).
 }

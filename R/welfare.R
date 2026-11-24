@@ -3,11 +3,14 @@
 #' Translates estimated bilateral spending slopes into neighborhood nominal
 #' income growth, destination sales and producer price responses, the open-city
 #' common income level \eqn{\widehat{c}_t} (Proposition 2.5), and first-order
-#' money-metric resident welfare \eqn{\mathrm{d}EV_{nt} / v_n^0}. Also verifies
-#' the open-city aggregate terms-of-trade identity and computes two-step
-#' bootstrap or delta-method confidence intervals.
+#' money-metric resident welfare \eqn{\mathrm{d}EV_{nt} / v_n^0}. Supports
+#' unbalanced weighted Step-2 matching samples (\code{kappa_support}),
+#' non-homothetic marginal propensities to spend (\code{mpc_nonhousing}),
+#' upstream outside-sector retention (\code{psi_O}), and two-period contrasts
+#' (\code{period} vs. \code{base_period}).
 #'
-#' @param fit An \code{\link{urban_bilateral}} object from \code{\link{estimate_bilateral}}.
+#' @param fit An \code{\link{urban_bilateral}} object from
+#'   \code{\link{estimate_bilateral}} or \code{\link{bilateral_from_estimates}}.
 #' @param account An \code{\link{urban_account}} object.
 #' @param price_shares Either \code{"estimate_by_group"} (default, estimates
 #'   group-specific marginal price shares \eqn{\kappa_g^S} via two-way FE
@@ -17,11 +20,22 @@
 #' @param level_anchor Character: \code{"open_city_factor_balance"} (default,
 #'   Proposition 2.5's \eqn{\widehat{c}_t = -\psi_t / (1 - \vartheta)}) or
 #'   \code{"zero"} (cross-sectional differences at \eqn{c_t = 0}).
-#' @param period Integer or character selecting the focal reporting period for
-#'   cross-sectional summaries and plots (defaults to the period with largest
-#'   mean external shock \eqn{\bar{d}_t}).
+#' @param period Integer or character selecting the focal reporting period
+#'   (defaults to the period with largest mean external shock \eqn{\bar{d}_t}).
+#' @param base_period Optional integer or character selecting a reference period
+#'   to difference against (when \code{NULL}, responses are reported as stored,
+#'   e.g. relative to the already-normalized base month).
 #' @param kappa_periods Optional integer vector of column indices of periods used
-#'   when estimating \eqn{\kappa_g^S} (defaults to all periods).
+#'   when estimating \eqn{\kappa_g^S} on a balanced panel (defaults to all periods).
+#' @param kappa_support Optional data frame with columns \code{origin} (or \code{id})
+#'   and \code{time} (or \code{t}), plus optional \code{weight} (or
+#'   \code{estimation_weight}) and additional control columns, specifying an
+#'   exact unbalanced WLS/FE support for Step-2 \eqn{\kappa_g^S} estimation.
+#' @param mpc_nonhousing Optional scalar or length-\code{N_orig} vector giving
+#'   the marginal propensity to spend on non-housing goods \eqn{\mu_n = \mathrm{d}x_n / \mathrm{d}v_n}
+#'   (defaults to \code{account$origins$nu}, i.e. \eqn{\mu_n = \nu_n}).
+#' @param psi_O Numeric scalar in \eqn{[0, 1)} for upstream outside-sector factor
+#'   retention per euro of flexible input expansion (default \code{0.0}).
 #' @param se_method Character: \code{"bootstrap"} (default, parametric redraws of
 #'   \eqn{\widehat{\boldsymbol{\beta}}} and \eqn{\widehat{\boldsymbol{\kappa}}^S}),
 #'   \code{"delta"}, or \code{"none"}.
@@ -31,20 +45,16 @@
 #' @aliases urban_welfare
 #' @return An S3 object of class \code{"urban_welfare"}.
 #' @export
-#' @examples
-#' data(sim_city_160)
-#' acct <- urban_account(sim_city_160$E_R0, sim_city_160$H_0,
-#'                       sim_city_160$origins, sim_city_160$destinations)
-#' exps <- build_exposures(acct, sim_city_160$shocks)
-#' fit  <- estimate_bilateral(sim_city_160$bilateral_panel, exps)
-#' welf <- recover_welfare(fit, acct, seed = 1)
-#' summary(welf)
 recover_welfare <- function(fit,
                             account,
                             price_shares = "estimate_by_group",
                             level_anchor = c("open_city_factor_balance", "zero"),
                             period = NULL,
+                            base_period = NULL,
                             kappa_periods = NULL,
+                            kappa_support = NULL,
+                            mpc_nonhousing = NULL,
+                            psi_O = 0.0,
                             se_method = c("bootstrap", "delta", "none"),
                             n_boot = 300L,
                             seed = 42L) {
@@ -55,44 +65,59 @@ recover_welfare <- function(fit,
   exps <- fit$exposures
   Nt <- exps$N_time
 
-  if (is.null(period)) {
-    p_idx <- which.max(colMeans(exps$d))
-  } else if (is.character(period)) {
-    p_idx <- match(period, exps$time_ids)
-    if (is.na(p_idx)) stop("period not found in exposures$time_ids.")
-  } else {
-    p_idx <- as.integer(period)
-  }
+  p_idx <- .resolve_period_idx(period, exps, default_peak = TRUE)
+  b_idx <- if (!is.null(base_period)) .resolve_period_idx(base_period, exps, default_peak = FALSE) else NULL
   if (is.null(kappa_periods)) kappa_periods <- seq_len(Nt)
 
+  nu_vec <- account$origins$nu
+  mu_vec <- if (is.null(mpc_nonhousing)) nu_vec else {
+    if (length(mpc_nonhousing) == 1L) rep(as.numeric(mpc_nonhousing), account$N_orig) else as.numeric(mpc_nonhousing)
+  }
+
   # Step 2a: Relative origin income & destination sales at c_t = 0
-  resp <- .compute_relative_responses(fit$coefficients, account, exps)
+  resp <- .compute_relative_responses(fit$coefficients, account, exps, nu_vec, mu_vec)
 
   # Step 2b: Estimate or assign destination price shares kappa^S_i
-  kap_fit <- .resolve_kappa(price_shares, account, resp$dlog_v_hat, resp$dlog_y_hat, kappa_periods)
+  kap_fit <- .resolve_kappa(price_shares, account, resp$dlog_v_hat, resp$dlog_y_hat,
+                            kappa_periods, kappa_support, exps$time_ids)
   kappa_vec <- kap_fit$kappa_vec
 
   # Step 3: Common level c_t (Proposition 2.5) and welfare evaluation
-  eval_out <- .evaluate_anchored_welfare(account, resp, kappa_vec, level_anchor)
+  eval_out <- .evaluate_anchored_welfare(account, resp, kappa_vec, level_anchor, nu_vec, mu_vec, psi_O)
 
   is_res <- account$origins$is_city_resident
   pop_res <- account$origins$pop[is_res]
   pop_weights <- pop_res / sum(pop_res)
 
-  # Peak/focal period tract-level summary data.frame for city residents
-  w_p <- 100 * eval_out$welfare[is_res, p_idx]
-  inc_p <- 100 * eval_out$dlog_v[is_res, p_idx]
-  cost_p <- 100 * eval_out$living_cost[is_res, p_idx]
-  w_zero_p <- 100 * eval_out$welfare_zero[is_res, p_idx]
+  extract_contrast <- function(ev, col_p, col_b) {
+    if (is.null(col_b)) {
+      list(
+        w = 100 * ev$welfare[is_res, col_p],
+        inc = 100 * ev$dlog_v[is_res, col_p],
+        cost = 100 * ev$living_cost[is_res, col_p],
+        w_zero = 100 * ev$welfare_zero[is_res, col_p],
+        c_lp = 100 * ev$c_t[col_p]
+      )
+    } else {
+      list(
+        w = 100 * (ev$welfare[is_res, col_p] - ev$welfare[is_res, col_b]),
+        inc = 100 * (ev$dlog_v[is_res, col_p] - ev$dlog_v[is_res, col_b]),
+        cost = 100 * (ev$living_cost[is_res, col_p] - ev$living_cost[is_res, col_b]),
+        w_zero = 100 * (ev$welfare_zero[is_res, col_p] - ev$welfare_zero[is_res, col_b]),
+        c_lp = 100 * (ev$c_t[col_p] - ev$c_t[col_b])
+      )
+    }
+  }
 
+  ct <- extract_contrast(eval_out, p_idx, b_idx)
   tract_df <- data.frame(
     id = account$orig_ids[is_res],
     pop = pop_res,
     v0 = account$origins$v0[is_res],
-    income_lp = inc_p,
-    living_cost_lp = cost_p,
-    welfare_lp = w_p,
-    welfare_unanchored_lp = w_zero_p,
+    income_lp = ct$inc,
+    living_cost_lp = ct$cost,
+    welfare_lp = ct$w,
+    welfare_unanchored_lp = ct$w_zero,
     stringsAsFactors = FALSE
   )
   if (all(c("x", "y") %in% names(account$origins))) {
@@ -100,22 +125,23 @@ recover_welfare <- function(fit,
     tract_df$y <- account$origins$y[is_res]
   }
 
+  period_label <- if (is.null(b_idx)) exps$time_ids[p_idx] else paste0(exps$time_ids[p_idx], " - ", exps$time_ids[b_idx])
   headline <- list(
-    period = exps$time_ids[p_idx],
+    period = period_label,
     period_index = p_idx,
-    mean_income_lp = sum(pop_weights * inc_p),
-    mean_living_cost_lp = sum(pop_weights * cost_p),
-    mean_welfare_lp = sum(pop_weights * w_p),
-    mean_welfare_unanchored_lp = sum(pop_weights * w_zero_p),
-    common_shift_c_lp = 100 * eval_out$c_t[p_idx],
+    base_period_index = b_idx,
+    mean_income_lp = sum(pop_weights * ct$inc),
+    mean_living_cost_lp = sum(pop_weights * ct$cost),
+    mean_welfare_lp = sum(pop_weights * ct$w),
+    mean_welfare_unanchored_lp = sum(pop_weights * ct$w_zero),
+    common_shift_c_lp = ct$c_lp,
     vartheta = eval_out$vartheta,
-    p10_welfare_lp = .weighted_quantile(w_p, pop_weights, 0.10),
-    p50_welfare_lp = .weighted_quantile(w_p, pop_weights, 0.50),
-    p90_welfare_lp = .weighted_quantile(w_p, pop_weights, 0.90),
+    p10_welfare_lp = .weighted_quantile(ct$w, pop_weights, 0.10),
+    p50_welfare_lp = .weighted_quantile(ct$w, pop_weights, 0.50),
+    p90_welfare_lp = .weighted_quantile(ct$w, pop_weights, 0.90),
     terms_of_trade_gap = eval_out$tot_check$max_abs_gap
   )
 
-  # Confidence intervals for mean resident welfare in focal period
   ci <- c(lower = NA_real_, upper = NA_real_, se = NA_real_)
   if (se_method == "bootstrap" && n_boot > 1L) {
     if (!is.null(seed)) set.seed(as.integer(seed))
@@ -127,31 +153,32 @@ recover_welfare <- function(fit,
     }
     boot_means <- numeric(n_boot)
     for (b in seq_len(n_boot)) {
-      r_b <- .compute_relative_responses(b_draws[b, ], account, exps)
+      r_b <- .compute_relative_responses(b_draws[b, ], account, exps, nu_vec, mu_vec)
       if (kap_fit$estimated) {
-        kf_b <- .resolve_kappa(price_shares, account, r_b$dlog_v_hat, r_b$dlog_y_hat, kappa_periods, compute_vcov = FALSE)
+        kf_b <- .resolve_kappa(price_shares, account, r_b$dlog_v_hat, r_b$dlog_y_hat,
+                               kappa_periods, kappa_support, exps$time_ids, compute_vcov = FALSE)
         c_new <- kf_b$coef + k_noise[b, ]
-        kv_b <- .map_group_kappa(c_new, account, kap_fit$mode)
+        kv_b <- .map_group_kappa(c_new, account, kap_fit$mode, clamp = FALSE)
       } else {
         kv_b <- kappa_vec
       }
-      ev_b <- .evaluate_anchored_welfare(account, r_b, kv_b, level_anchor)
-      boot_means[b] <- 100 * sum(pop_weights * ev_b$welfare[is_res, p_idx])
+      ev_b <- .evaluate_anchored_welfare(account, r_b, kv_b, level_anchor, nu_vec, mu_vec, psi_O)
+      ct_b <- extract_contrast(ev_b, p_idx, b_idx)
+      boot_means[b] <- sum(pop_weights * ct_b$w)
     }
     qs <- stats::quantile(boot_means, probs = c(0.025, 0.975), names = FALSE, na.rm = TRUE)
     ci <- c(lower = qs[1], upper = qs[2], se = stats::sd(boot_means, na.rm = TRUE))
   } else if (se_method == "delta") {
-    # Numerical gradient wrt 4 bilateral slopes holding kappa_vec fixed
     base_val <- headline$mean_welfare_lp
     grad <- numeric(4L)
     eps_d <- 1e-5
     for (k in 1:4) {
       b_up <- fit$coefficients
       b_up[k] <- b_up[k] + eps_d
-      r_u <- .compute_relative_responses(b_up, account, exps)
-      ev_u <- .evaluate_anchored_welfare(account, r_u, kappa_vec, level_anchor)
-      val_u <- 100 * sum(pop_weights * ev_u$welfare[is_res, p_idx])
-      grad[k] <- (val_u - base_val) / eps_d
+      r_u <- .compute_relative_responses(b_up, account, exps, nu_vec, mu_vec)
+      ev_u <- .evaluate_anchored_welfare(account, r_u, kappa_vec, level_anchor, nu_vec, mu_vec, psi_O)
+      ct_u <- extract_contrast(ev_u, p_idx, b_idx)
+      grad[k] <- (sum(pop_weights * ct_u$w) - base_val) / eps_d
     }
     se_val <- sqrt(max(0.0, as.numeric(t(grad) %*% fit$vcov %*% grad)))
     ci <- c(lower = base_val - 1.959964 * se_val, upper = base_val + 1.959964 * se_val, se = se_val)
@@ -160,7 +187,6 @@ recover_welfare <- function(fit,
   headline$ci_upper_lp <- unname(ci["upper"])
   headline$se_lp <- unname(ci["se"])
 
-  # Decile summary table
   deciles <- .build_decile_table(tract_df, pop_weights)
 
   structure(
@@ -168,6 +194,8 @@ recover_welfare <- function(fit,
       fit = fit,
       account = account,
       level_anchor = level_anchor,
+      mpc_nonhousing = mu_vec,
+      psi_O = psi_O,
       kappa_fit = kap_fit,
       kappa_vec = kappa_vec,
       responses = resp,
@@ -181,34 +209,53 @@ recover_welfare <- function(fit,
   )
 }
 
-.compute_relative_responses <- function(b4, account, exps) {
+.resolve_period_idx <- function(period, exps, default_peak = TRUE) {
+  if (is.null(period)) {
+    return(if (default_peak) which.max(colMeans(exps$d)) else 1L)
+  }
+  if (is.character(period)) {
+    idx <- match(period, exps$time_ids)
+    if (is.na(idx)) stop(sprintf("Period '%s' not found in exposures$time_ids.", period))
+    return(idx)
+  }
+  as.integer(period)
+}
+
+.compute_relative_responses <- function(b4, account, exps, nu_vec, mu_vec) {
   a_O <- unname(b4[1])
   b_v <- unname(b4[2])
   a_D <- unname(b4[3])
   b_D <- unname(b4[4])
 
-  # Relative origin income growth: d log v_hat = a_O h_orig + b_v Fv
-  dlog_v_hat <- a_O * exps$h_orig + b_v * exps$Fv
+  # Non-housing spending shift dlog x_nt = a_O h_orig + b_v Fv
+  # Note: non-city metro origins do not receive city origin direct shock a_O h_orig
+  is_res <- account$origins$is_city_resident
+  h_orig_eff <- exps$h_orig
+  if (any(!is_res)) h_orig_eff[!is_res, ] <- 0.0
+  dlog_x_hat <- a_O * h_orig_eff + b_v * exps$Fv
+  dlog_v_hat <- sweep(dlog_x_hat, 1, nu_vec / mu_vec, "*")
   Delta_D_hat <- a_D * exps$h + b_D * exps$Fy
 
-  # Exact analytical sum_n Omega^v_{in} d log E^R_{nit}:
-  # d log E^R_{nit} = dlog_v_hat[n, t] + Delta_D_hat[i, t] - bar_Delta[n, t]
   bar_Delta <- account$S_NH %*% Delta_D_hat
-  orig_shift <- dlog_v_hat - bar_Delta
+  orig_shift <- dlog_x_hat - bar_Delta
   Omega_row_sum <- rowSums(account$Omega_v)
   resident_sales_contrib <- (account$Omega_v %*% orig_shift) + sweep(Delta_D_hat, 1, Omega_row_sum, "*")
   dlog_y_hat <- exps$d + resident_sales_contrib
 
   list(
+    dlog_x_hat = dlog_x_hat,
     dlog_v_hat = dlog_v_hat,
     dlog_y_hat = dlog_y_hat,
     Delta_D_hat = Delta_D_hat
   )
 }
 
-.resolve_kappa <- function(price_shares, account, dlog_v_hat, dlog_y_hat, kappa_periods, compute_vcov = TRUE) {
+.resolve_kappa <- function(price_shares, account, dlog_v_hat, dlog_y_hat,
+                           kappa_periods, kappa_support = NULL, time_ids = NULL,
+                           compute_vcov = TRUE) {
   Nd <- account$N_dest
   is_res <- account$origins$is_city_resident
+  res_ids <- account$orig_ids[is_res]
   v0_res <- account$origins$v0[is_res]
   H_res <- account$H_m[is_res, , drop = FALSE]
   y0 <- account$destinations$y0
@@ -229,15 +276,64 @@ recover_welfare <- function(fit,
   }
 
   mode <- match.arg(price_shares, c("estimate_by_group", "estimate_common"))
+  use_groups <- if (mode == "estimate_common") list(all = rep(TRUE, Nd)) else {
+    setNames(lapply(grp_levels, function(g) groups == g), as.character(grp_levels))
+  }
+  K <- length(use_groups)
+
+  # Unbalanced weighted WLS/FE support when kappa_support is supplied
+  if (!is.null(kappa_support)) {
+    sup <- as.data.frame(kappa_support)
+    id_col <- if ("origin" %in% names(sup)) "origin" else if ("id" %in% names(sup)) "id" else stop("kappa_support needs 'origin' or 'id'.")
+    tm_col <- if ("time" %in% names(sup)) "time" else if ("t" %in% names(sup)) "t" else stop("kappa_support needs 'time' or 't'.")
+    wt_col <- if ("weight" %in% names(sup)) "weight" else if ("estimation_weight" %in% names(sup)) "estimation_weight" else NULL
+    ctrl_cols <- setdiff(names(sup), c(id_col, tm_col, wt_col))
+
+    r_ix <- match(as.character(sup[[id_col]]), res_ids)
+    t_ix <- match(as.character(sup[[tm_col]]), as.character(time_ids))
+    keep <- !is.na(r_ix) & !is.na(t_ix)
+    sup <- sup[keep, , drop = FALSE]
+    r_ix <- r_ix[keep]
+    t_ix <- t_ix[keep]
+
+    Y_res_all <- dlog_v_hat[is_res, , drop = FALSE]
+    reg_df <- data.frame(
+      origin_fe = res_ids[r_ix],
+      time_fe = as.character(time_ids)[t_ix],
+      y_dep = Y_res_all[cbind(r_ix, t_ix)],
+      w_est = if (!is.null(wt_col)) as.numeric(sup[[wt_col]]) else 1.0,
+      stringsAsFactors = FALSE
+    )
+    g_col_names <- paste0("Xg_", seq_len(K))
+    for (k in seq_len(K)) {
+      mask <- as.numeric(use_groups[[k]])
+      sales_g <- sweep(dlog_y_hat, 1, y0 * mask, "*")
+      X_full <- sweep(H_res %*% sales_g, 1, v0_res, "/")
+      reg_df[[g_col_names[k]]] <- X_full[cbind(r_ix, t_ix)]
+    }
+    for (cc in ctrl_cols) reg_df[[cc]] <- as.numeric(sup[[cc]])
+
+    rhs_all <- c(g_col_names, if (length(ctrl_cols) > 0L) paste0("`", ctrl_cols, "`") else character(0))
+    fml_k <- as.formula(sprintf("y_dep ~ %s | origin_fe + time_fe", paste(rhs_all, collapse = " + ")))
+    est_k <- fixest::feols(fml_k, data = reg_df, weights = ~ w_est,
+                           vcov = if (compute_vcov) ~ origin_fe + time_fe else "iid", notes = FALSE)
+    cf <- as.numeric(coef(est_k)[g_col_names])
+    names(cf) <- names(use_groups)
+    vc <- if (compute_vcov) {
+      V_sub <- as.matrix(vcov(est_k))[g_col_names, g_col_names, drop = FALSE]
+      dimnames(V_sub) <- list(names(use_groups), names(use_groups))
+      V_sub
+    } else NULL
+    kv <- .map_group_kappa(cf, account, mode, clamp = FALSE)
+    return(list(estimated = TRUE, mode = mode, coef = cf, vcov = vc, kappa_vec = kv))
+  }
+
+  # Fast analytical balanced two-way FE path
   Y_sub <- dlog_v_hat[is_res, kappa_periods, drop = FALSE]
   Yd <- .demean_twoway_mat(Y_sub)
   No_res <- nrow(Y_sub)
   Nt_sub <- ncol(Y_sub)
 
-  use_groups <- if (mode == "estimate_common") list(all = rep(TRUE, Nd)) else {
-    setNames(lapply(grp_levels, function(g) groups == g), as.character(grp_levels))
-  }
-  K <- length(use_groups)
   Xd_list <- vector("list", K)
   X_mat <- matrix(0.0, nrow = No_res * Nt_sub, ncol = K)
   for (k in seq_len(K)) {
@@ -284,16 +380,16 @@ recover_welfare <- function(fit,
   list(estimated = TRUE, mode = mode, coef = cf, vcov = vc, kappa_vec = kv)
 }
 
-.map_group_kappa <- function(cf, account, mode) {
+.map_group_kappa <- function(cf, account, mode, clamp = TRUE) {
   if (mode == "estimate_common") {
     kv <- rep(unname(cf[1]), account$N_dest)
   } else {
     kv <- as.numeric(cf[as.character(account$destinations$sector_group)])
   }
-  pmin(0.999, pmax(0.01, kv))
+  if (clamp) pmin(0.999, pmax(0.01, kv)) else kv
 }
 
-.evaluate_anchored_welfare <- function(account, resp, kappa_vec, level_anchor) {
+.evaluate_anchored_welfare <- function(account, resp, kappa_vec, level_anchor, nu_vec, mu_vec, psi_O = 0.0) {
   is_res <- account$origins$is_city_resident
   v0 <- account$origins$v0
   v0_res <- v0[is_res]
@@ -302,11 +398,11 @@ recover_welfare <- function(fit,
   H_res <- account$H_m[is_res, , drop = FALSE]
   H_col_res <- colSums(H_res)
 
-  # Omega_i^v summed over city residents receiving c_t
-  Omega_res_i <- rowSums(account$Omega_v[, is_res, drop = FALSE])
-  vartheta <- sum(H_col_res * y0 * kappa_vec * Omega_res_i) / V_R0
+  mu_over_nu_res <- mu_vec[is_res] / nu_vec[is_res]
+  Omega_res_weighted <- as.numeric(account$Omega_v[, is_res, drop = FALSE] %*% mu_over_nu_res)
+  eff_retention_i <- H_col_res * kappa_vec + psi_O * (1.0 - kappa_vec)
+  vartheta <- sum(y0 * eff_retention_i * Omega_res_weighted) / V_R0
 
-  # Unanchored price & welfare
   dlog_p_zero <- sweep(resp$dlog_y_hat, 1, kappa_vec, "*")
   living_cost_zero <- account$S_tot %*% dlog_p_zero
   welfare_zero <- resp$dlog_v_hat - living_cost_zero
@@ -318,26 +414,23 @@ recover_welfare <- function(fit,
       stop(sprintf("Open-city recycling share vartheta = %.4f >= 1; common shift c_t is not uniquely anchored.", vartheta))
     }
     lhs_zero <- colSums(sweep(resp$dlog_v_hat[is_res, , drop = FALSE], 1, v0_res, "*"))
-    rhs_zero <- as.numeric(crossprod(H_col_res * y0 * kappa_vec, resp$dlog_y_hat))
+    rhs_zero <- as.numeric(crossprod(y0 * eff_retention_i, resp$dlog_y_hat))
     psi_t <- (lhs_zero - rhs_zero) / V_R0
     c_t <- -psi_t / (1.0 - vartheta)
   }
 
-  # Add common shift c_t to city residents
   dlog_v <- resp$dlog_v_hat
   dlog_v[is_res, ] <- sweep(dlog_v[is_res, , drop = FALSE], 2, c_t, "+")
 
-  dlog_y <- resp$dlog_y_hat + outer(Omega_res_i, c_t)
+  dlog_y <- resp$dlog_y_hat + outer(Omega_res_weighted, c_t)
   dlog_p <- sweep(dlog_y, 1, kappa_vec, "*")
   living_cost <- account$S_tot %*% dlog_p
   welfare <- dlog_v - living_cost
 
-  # Verify open-city aggregate terms-of-trade identity (eq. 2.14) when anchored
-  # Sum_{n in R} dEV_nt = Sum_i E^{ext,tot}_i dlog p_it - Sum_i (1 - H_{res,i}) y0_i dlog p_it
-  # where E^{ext,tot}_i = y0_i - sum_{n in R} E_{ni}^{R,0}
   E_nonres_i <- y0 - colSums(account$E_R0[is_res, , drop = FALSE])
   sum_dEV <- colSums(sweep(welfare[is_res, , drop = FALSE], 1, v0_res, "*"))
-  tot_rhs <- as.numeric(crossprod(E_nonres_i - (1.0 - H_col_res) * y0, dlog_p))
+  dm_mat <- sweep(dlog_y, 1, y0, "*") - sweep(dlog_p, 1, y0, "*")
+  tot_rhs <- as.numeric(crossprod(E_nonres_i - (1.0 - H_col_res) * y0, dlog_p)) + psi_O * colSums(dm_mat)
   tot_gap <- if (level_anchor == "open_city_factor_balance") max(abs(sum_dEV - tot_rhs)) / V_R0 else NA_real_
 
   list(
@@ -392,7 +485,7 @@ recover_welfare <- function(fit,
   vals <- pmax(eig$values, 0.0)
   R <- eig$vectors %*% (sqrt(vals) * t(eig$vectors))
   Z <- matrix(stats::rnorm(n * k), nrow = n, ncol = k)
-   sweep(Z %*% R, 2, mu, "+")
+  sweep(Z %*% R, 2, mu, "+")
 }
 
 #' @export

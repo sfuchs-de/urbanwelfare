@@ -103,3 +103,28 @@ assert_true(inherits(p1, "ggplot") && inherits(p2, "ggplot") &&
               inherits(p3, "ggplot") && inherits(p4, "ggplot"))
 
 cat("=== ALL URBANWELFARE TESTS PASSED ===\n")
+
+cat("=== Test 4: One-Call Tidy Pipeline, Enclave Import, & MPC/psi_O Sensitivities ===\n")
+ext_tidy <- data.frame(
+  dest = sim2$shocks$dest,
+  time = sim2$shocks$time,
+  external_spending = sim2$shocks$E_ext,
+  stringsAsFactors = FALSE
+)
+pipe_out <- run_urban_welfare(
+  bilateral_panel = sim2$bilateral_panel,
+  commuting       = sim2$H_0,
+  external_demand = ext_tidy,
+  origins         = sim2$origins,
+  destinations    = sim2$destinations,
+  se_method       = "none"
+)
+assert_true(inherits(pipe_out, "urban_pipeline"))
+assert_true(abs(pipe_out$welfare$headline$mean_welfare_lp - welf3$headline$mean_welfare_lp) < 1e-10,
+            "run_urban_welfare must match modular pipeline identically")
+
+fit_imp <- bilateral_from_estimates(fit3$coefficients, exps3, vcov = fit3$vcov, n_obs = fit3$n_obs)
+welf_imp <- recover_welfare(fit_imp, acct3, mpc_nonhousing = 0.80, psi_O = 0.10, se_method = "delta")
+assert_true(welf_imp$headline$terms_of_trade_gap < 1e-12,
+            "Generalized terms-of-trade identity with psi_O > 0 and mu != nu must hold")
+cat("  One-call pipeline & enclave import checks passed.\n")

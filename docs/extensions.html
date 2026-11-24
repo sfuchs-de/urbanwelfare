@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Extensions, QSM & Taxes &middot; urbanwelfare</title>
+  <meta name="description" content="Documentation for urbanwelfare: Sufficient-Statistics Welfare Incidence and Optimal Policy in Urban Networks."/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"/>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/r.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", () => { if (window.hljs) hljs.highlightAll(); });</script>
+  <script defer src="assets/site.js"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="index.html">
+        <span class="brand-title">urbanwelfare</span>
+        <span class="version-badge">v0.1.0</span>
+      </a>
+      <input id="sidebar-search" class="search-box" type="search" placeholder="Filter pages..."/>
+      <div class="nav-group-label">Getting Started</div><ul class="nav-list"><li><a href="index.html">Home & Quickstart</a></li><li><a href="own-data.html">Use Your Own Data</a></li></ul><div class="nav-group-label">Methodology</div><ul class="nav-list"><li><a href="model.html">Sufficient-Statistics Model</a></li><li><a href="extensions.html" class="active">Extensions, QSM & Taxes</a></li><li><a href="barcelona.html">Barcelona Replication</a></li></ul><div class="nav-group-label">Reference</div><ul class="nav-list"><li><a href="api.html">API Reference</a></li></ul>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="breadcrumb">urbanwelfare &rsaquo; <strong>Extensions, QSM & Taxes</strong></div>
+        <div class="topbar-actions">
+          <select id="theme-picker" class="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="catppuccin">Catppuccin</option>
+          </select>
+          <a class="gh-link" href="https://github.com/sfuchs-de/urbanwelfare" target="_blank" rel="noopener">GitHub &nearr;</a>
+        </div>
+      </header>
+      <main class="content">
+        
+<h1>Extensions, Nonlinear QSM &amp; Optimal Spatial Taxes</h1>
+
+<h2>1. Shift-Share Network Identification</h2>
+<p>
+  When shocks follow a shift-share structure $h_{it} = \sum_g \pi_{ig} g_{gt}$ (e.g. visitor origin shares
+  $\times$ seasonal travel shifts), non-random destination exposure propagates through $(I - M)^{-1}$.
+  Passing <code>shifter_expectations</code> in <code>build_exposures(..., design = "shift_share")</code>
+  propagates expected shifts through $(I - M)^{-1}$ following Borusyak and Hull (2023), and
+  <code>rotemberg_weights()</code> / <code>loo_influence()</code> report shock-level relevance weights and
+  leave-one-hub-out jackknife stability.
+</p>
+
+<h2>2. Robustness Extensions (Section 5.2)</h2>
+<ul>
+  <li>
+    <strong>Shopping Amenity / Congestion Residuals (<code>add_shopping_wedge()</code>)</strong>:
+    Inverts $\widehat{\Delta}^D_{it} / (1 - \sigma)$ to separate monetary producer price growth
+    $\widehat{p}_{it}^{\mathrm{prod}}$ from perceived shopping quality/crowding wedges $\widehat{\zeta}_{it}$.
+  </li>
+  <li>
+    <strong>Workplace Mobility Le Chatelier Rules (<code>add_workplace_mobility()</code>)</strong>:
+    Solves linearized workplace labor market clearing under Fr&eacute;chet sorting elasticity $\varepsilon$
+    and perfect city-wide mobility ($\varepsilon \to \infty$).
+  </li>
+  <li>
+    <strong>Finite-Change Welfare Bounds (<code>add_finite_bounds()</code>)</strong>:
+    Evaluates exact finite-change consumer Laspeyres, CES, and Paasche bounds alongside C++ bounded-variable
+    least-squares (<code>cpp_bvls_box</code>) producer-concave feasibility projections.
+  </li>
+</ul>
+
+<h2>3. Nonlinear QSM &amp; Adjoint Ramsey Spatial Taxation</h2>
+<p>
+  <code>solve_qsm()</code> and <code>optimal_spatial_tax()</code> calibrate a two-sector open-city nonlinear
+  QSM directly to <code>acct</code> and $\widehat{\boldsymbol{\kappa}}^S$. Under ad valorem visitor tax
+  $\tau_i = e^{\theta_i} - 1$ rebated lump-sum to city residents ($T = R / \Omega$), the C++ solver computes
+  exact equilibrium prices via damped Newton and evaluates the analytical adjoint welfare gradient:
+</p>
+$$\nabla_{\boldsymbol{\theta}} W = -\mathcal{E}' b^T + \frac{\mu_T^{GE}}{\Omega}\Bigl[(\mathbf{1} + \boldsymbol{\tau})\odot \mathbf{E}^T - \mathcal{E}'(\boldsymbol{\tau}\odot \mathbf{E}^T)\Bigr],$$
+<p>
+  where $\mathcal{E} = -\mathrm{d}\log \mathbf{E}^T / \mathrm{d}\boldsymbol{\theta}'$ is the general-equilibrium
+  tax-base elasticity matrix. At the interior optimum, <code>optimal_spatial_tax()</code> decomposes each
+  neighborhood&rsquo;s optimal rate into four economic channels: (1) own inverse-elasticity markup,
+  (2) own resident incidence, (3) cross-neighborhood resident spillovers, and (4) cross-base fiscal spillovers.
+</p>
+
+<div class="figure-grid">
+  <div class="figure-card">
+    <img src="assets/fig-map.png" alt="Spatial welfare map"/>
+    <div class="figure-caption"><code>plot(welf, type = "map")</code>: Spatial distribution of resident welfare gains across neighborhoods.</div>
+  </div>
+  <div class="figure-card">
+    <img src="assets/fig-tax.png" alt="Optimal spatial tax distribution"/>
+    <div class="figure-caption"><code>plot(tax, type = "distribution")</code>: Optimal place-specific visitor tax rates vs. optimal city-wide uniform rate.</div>
+  </div>
+</div>
+
+        <nav class="pager">
+          <a href="model.html">&laquo; Sufficient-Statistics Model</a>
+          <a href="barcelona.html">Barcelona Replication &raquo;</a>
+        </nav>
+        <div class="footer-note">
+          <code>urbanwelfare</code> v0.1.0 &middot; Based on Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, <em>&ldquo;Urban Welfare: Tourism in Barcelona&rdquo;</em>). MIT License.
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

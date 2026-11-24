@@ -20,6 +20,10 @@
 #'   alongside the network exposures \eqn{(F^v_{nt}, \widetilde{F}^y_{nit})}.
 #' @param use_expected_controls Logical (default \code{TRUE}): include
 #'   Borusyak-Hull expected exposures when present in \code{exposures}.
+#' @param extra_controls Optional character vector of additional covariate column
+#'   names already present in \code{panel} to include on the right-hand side.
+#' @param weights Optional character string naming a non-negative observation
+#'   weight column in \code{panel}.
 #'
 #' @aliases urban_bilateral
 #' @return An S3 object of class \code{"urban_bilateral"} containing the
@@ -38,12 +42,17 @@ estimate_bilateral <- function(panel,
                                estimator = c("ols", "ppml", "iv"),
                                cluster = c("origin^time", "dest^time"),
                                include_direct = TRUE,
-                               use_expected_controls = TRUE) {
+                               use_expected_controls = TRUE,
+                               extra_controls = character(0),
+                               weights = NULL) {
   if (!inherits(exposures, "urban_exposures")) stop("exposures must be an 'urban_exposures' object.")
   estimator <- match.arg(estimator)
   df <- as.data.frame(panel)
   if (!all(c("origin", "dest", "time") %in% names(df))) {
     stop("panel must contain columns 'origin', 'dest', and 'time'.")
+  }
+  if (length(extra_controls) > 0L && !all(extra_controls %in% names(df))) {
+    stop("All extra_controls columns must exist in panel.")
   }
 
   o_idx <- match(as.character(df$origin), exposures$orig_ids)
@@ -76,6 +85,9 @@ estimate_bilateral <- function(panel,
       ctrl_terms <- c("h_orig_exp", "Fv_orig_exp", "h_dest_tilde_exp", "Fy_dest_tilde_exp")
     }
   }
+  if (length(extra_controls) > 0L) {
+    ctrl_terms <- c(ctrl_terms, paste0("`", extra_controls, "`"))
+  }
 
   main_terms <- if (include_direct) {
     c("h_orig", "Fv_orig", "h_dest_tilde", "Fy_dest_tilde")
@@ -84,6 +96,7 @@ estimate_bilateral <- function(panel,
   }
   rhs_ctrl <- if (length(ctrl_terms) > 0L) paste("+", paste(ctrl_terms, collapse = " + ")) else ""
   vcov_fml <- as.formula(paste("~", paste(cluster, collapse = " + ")))
+  w_fml <- if (!is.null(weights)) as.formula(paste0("~ `", weights, "`")) else NULL
 
   if (estimator == "ppml") {
     if (!("spending" %in% names(df))) {
@@ -92,7 +105,7 @@ estimate_bilateral <- function(panel,
     }
     fml <- as.formula(sprintf("spending ~ %s %s | origin^dest + time",
                               paste(main_terms, collapse = " + "), rhs_ctrl))
-    est <- fixest::fepois(fml, data = df, vcov = vcov_fml, notes = FALSE)
+    est <- fixest::fepois(fml, data = df, vcov = vcov_fml, weights = w_fml, notes = FALSE)
   } else if (estimator == "iv") {
     if (is.null(exposures$iv_instruments)) {
       stop("estimator = 'iv' requires shift-share instruments in exposures (pass realized_h in build_exposures).")
@@ -112,7 +125,7 @@ estimate_bilateral <- function(panel,
                               rhs_1,
                               paste(main_terms, collapse = " + "),
                               paste(iv_terms, collapse = " + ")))
-    est <- fixest::feols(fml, data = df, vcov = vcov_fml, notes = FALSE)
+    est <- fixest::feols(fml, data = df, vcov = vcov_fml, weights = w_fml, notes = FALSE)
   } else {
     if (!("log_spending" %in% names(df))) {
       if ("spending" %in% names(df)) df$log_spending <- log(df$spending)
@@ -120,12 +133,11 @@ estimate_bilateral <- function(panel,
     }
     fml <- as.formula(sprintf("log_spending ~ %s %s | origin^dest + time",
                               paste(main_terms, collapse = " + "), rhs_ctrl))
-    est <- fixest::feols(fml, data = df, vcov = vcov_fml, notes = FALSE)
+    est <- fixest::feols(fml, data = df, vcov = vcov_fml, weights = w_fml, notes = FALSE)
   }
 
   cf <- coef(est)
   vc <- as.matrix(vcov(est))
-  # Map to canonical 4-slope vector (a_O, b_v, a_D, b_D)
   canon_names <- c("h_orig", "Fv_orig", "h_dest_tilde", "Fy_dest_tilde")
   fit_names <- if (estimator == "iv") paste0("fit_", canon_names) else canon_names
   b4 <- setNames(rep(0.0, 4L), c("a_O", "b_v", "a_D", "b_D"))
@@ -142,6 +154,44 @@ estimate_bilateral <- function(panel,
       coefficients = b4,
       vcov = V4,
       n_obs = stats::nobs(est),
+      exposures = exposures
+    ),
+    class = "urban_bilateral"
+  )
+}
+
+#' Construct an \code{urban_bilateral} Object from Pre-Estimated Slopes
+#'
+#' Enables secure-enclave workflows where Step 1's multi-million-row bilateral
+#' panel regression is estimated inside a restricted enclave and only the four
+#' estimated slopes \eqn{(a_O, b_v, a_D, b_D)} and their \eqn{4 \times 4}
+#' covariance matrix are exported for downstream welfare and policy analysis.
+#'
+#' @param coefficients Numeric vector of length 4 giving \eqn{(a_O, b_v, a_D, b_D)}.
+#' @param exposures An \code{\link{urban_exposures}} object.
+#' @param vcov Optional \eqn{4 \times 4} covariance matrix (defaults to zeros).
+#' @param n_obs Optional integer observation count for reporting.
+#' @return An S3 object of class \code{"urban_bilateral"}.
+#' @export
+bilateral_from_estimates <- function(coefficients, exposures, vcov = NULL, n_obs = NA_integer_) {
+  if (!inherits(exposures, "urban_exposures")) stop("exposures must be an 'urban_exposures' object.")
+  if (length(coefficients) != 4L) stop("coefficients must have length 4: c(a_O, b_v, a_D, b_D).")
+  b4 <- setNames(as.numeric(coefficients), c("a_O", "b_v", "a_D", "b_D"))
+  if (is.null(vcov)) {
+    V4 <- matrix(0.0, 4L, 4L, dimnames = list(names(b4), names(b4)))
+  } else {
+    V4 <- as.matrix(vcov)
+    if (!all(dim(V4) == c(4L, 4L))) stop("vcov must be 4 x 4.")
+    dimnames(V4) <- list(names(b4), names(b4))
+  }
+  structure(
+    list(
+      fixest_model = NULL,
+      estimator = "imported",
+      include_direct = TRUE,
+      coefficients = b4,
+      vcov = V4,
+      n_obs = as.integer(n_obs),
       exposures = exposures
     ),
     class = "urban_bilateral"

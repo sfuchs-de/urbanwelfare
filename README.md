@@ -4,6 +4,9 @@
 
 `urbanwelfare` is a standalone R + C++ (`Rcpp`) package implementing the methodology of **Allen, Fuchs, Ganapati, Graziano, Madera, and Montoriol-Garriga (2026, *"Urban Welfare: Tourism in Barcelona"*)**.
 
+- **Documentation & Practitioner Guide**: <https://sfuchs-de.github.io/urbanwelfare/>
+  - [Quickstart](https://sfuchs-de.github.io/urbanwelfare/index.html) · [Use Your Own Data](https://sfuchs-de.github.io/urbanwelfare/own-data.html) · [Model & Sufficient Statistics](https://sfuchs-de.github.io/urbanwelfare/model.html) · [Extensions, QSM & Optimal Taxes](https://sfuchs-de.github.io/urbanwelfare/extensions.html) · [Barcelona Replication](https://sfuchs-de.github.io/urbanwelfare/barcelona.html) · [API Reference](https://sfuchs-de.github.io/urbanwelfare/api.html)
+
 Any researcher with an intra-city bilateral spending (or trip) panel, a workplace commuting/ownership matrix, and a localized demand shock can recover neighborhood nominal income growth, living-cost changes, and money-metric resident welfare **without unit price indices or parametric assumptions on preferences or production**—and optionally compare against a calibrated nonlinear Quantitative Spatial Model (QSM) and solve for optimal place-based taxes.
 
 ---
